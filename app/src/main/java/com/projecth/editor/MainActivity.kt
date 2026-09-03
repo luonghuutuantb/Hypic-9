@@ -697,158 +697,213 @@ fun applyBeauty(out:Bitmap,e:EditState,face:DetectedFace?):Bitmap{
             val x=i%w; val y=i/w
             val inFace=FaceMaskEngine.isFace(x,y,face)
             if(!inFace) continue
-            val mx=max(r,max(g,b)); val skin=r>g&&g>b&&r>70&&(r-g)<100&&(g-b)<90
-            var rr=r.toFloat();var gg=g.toFloat();var bb=b.toFloat()
-            if(skin){
-                val sm=smooth*.16f;val lift=light*28f
-                rr+=lift;gg+=lift*.92f;bb+=lift*.78f
-                rr+=(128f-rr)*sm;gg+=(128f-gg)*sm;bb+=(128f-bb)*sm
+            val mx = max(r, max(g, b))
+            val skin = r > g && g > b && r > 70 && (r - g) < 100 && (g - b) < 90
+            var rr = r.toFloat()
+            var gg = g.toFloat()
+            var bb = b.toFloat()
+            if (skin) {
+                val sm = smooth * .16f
+                val lift = light * 28f
+                rr += lift
+                gg += lift * .92f
+                bb += lift * .78f
+                rr += (128f - rr) * sm
+                gg += (128f - gg) * sm
+                bb += (128f - bb) * sm
             }
-            if(contours!=null){
-                val eyeRegion=FaceMaskEngine.inFeature(x,y,contours.leftEye)||FaceMaskEngine.inFeature(x,y,contours.rightEye)
-                val lipRegion=FaceMaskEngine.inFeature(x,y,contours.upperLipTop)||FaceMaskEngine.inFeature(x,y,contours.upperLipBottom)||FaceMaskEngine.inFeature(x,y,contours.lowerLipTop)||FaceMaskEngine.inFeature(x,y,contours.lowerLipBottom)
-                if(eyeRegion && eye>0f){ val boost=eye*24f;rr+=boost;gg+=boost;bb+=boost }
-                if(lipRegion && teeth>0f){
-                    val neutral=abs(r-g)<28&&abs(g-b)<28&&mx>120
-                    if(neutral){val boost=teeth*18f;rr+=boost;gg+=boost;bb+=boost}
+            if (contours != null) {
+                val eyeRegion = FaceMaskEngine.inFeature(x, y, contours.leftEye) || FaceMaskEngine.inFeature(x, y, contours.rightEye)
+                val lipRegion = FaceMaskEngine.inFeature(x, y, contours.upperLipTop) || FaceMaskEngine.inFeature(x, y, contours.upperLipBottom) || FaceMaskEngine.inFeature(x, y, contours.lowerLipTop) || FaceMaskEngine.inFeature(x, y, contours.lowerLipBottom)
+                if (eyeRegion && eye > 0f) {
+                    val boost = eye * 24f
+                    rr += boost
+                    gg += boost
+                    bb += boost
                 }
-            } else if(abs(r-g)<28&&abs(g-b)<28&&mx>120){
-                val boost=max(teeth,eye)*18f;rr+=boost;gg+=boost;bb+=boost
+                if (lipRegion && teeth > 0f) {
+                    val neutral = abs(r - g) < 28 && abs(g - b) < 28 && mx > 120
+                    if (neutral) {
+                        val boost = teeth * 18f
+                        rr += boost
+                        gg += boost
+                        bb += boost
+                    }
+                }
+            } else if (abs(r - g) < 28 && abs(g - b) < 28 && mx > 120) {
+                val boost = max(teeth, eye) * 18f
+                rr += boost
+                gg += boost
+                bb += boost
             }
-            px[i]=AndroidColor.argb(AndroidColor.alpha(col),rr.coerceIn(0f,255f).roundToInt(),gg.coerceIn(0f,255f).roundToInt(),bb.coerceIn(0f,255f).roundToInt())
+            px[i] = AndroidColor.argb(
+                AndroidColor.alpha(col),
+                rr.coerceIn(0f, 255f).roundToInt(),
+                gg.coerceIn(0f, 255f).roundToInt(),
+                bb.coerceIn(0f, 255f).roundToInt()
+            )
         }
-        out.setPixels(px,0,w,0,0,w,h)
+        out.setPixels(px, 0, w, 0, 0, w, h)
     }
-    return compositeLayers(out,layers)
+    return out
 }
 
-
-private fun saveBitmapToGallery(context:Context, bitmap:Bitmap, format:String, quality:Int, maxSide:Int, watermark:Boolean):String{
-    var out=bitmap
-    if(maxSide>0){
-        val scale=min(1f,maxSide.toFloat()/max(bitmap.width,bitmap.height))
-        if(scale<.999f) out=Bitmap.createScaledBitmap(bitmap,(bitmap.width*scale).roundToInt(),(bitmap.height*scale).roundToInt(),true)
+private fun saveBitmapToGallery(context: Context, bitmap: Bitmap, format: String, quality: Int, maxSide: Int, watermark: Boolean): String {
+    var out = bitmap
+    if (maxSide > 0) {
+        val scale = min(1f, maxSide.toFloat() / max(bitmap.width, bitmap.height))
+        if (scale < .999f) out = Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).roundToInt(), (bitmap.height * scale).roundToInt(), true)
     }
-    if(watermark){
-        val copy=out.copy(Bitmap.Config.ARGB_8888,true)
-        val canvas=Canvas(copy)
-        val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{
-            color=AndroidColor.argb(170,255,255,255)
-            textSize=(copy.width*.028f).coerceAtLeast(18f)
-            textAlign=Paint.Align.RIGHT
+    if (watermark) {
+        val copy = out.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(copy)
+        val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = AndroidColor.argb(170, 255, 255, 255)
+            textSize = (copy.width * .028f).coerceAtLeast(18f)
+            textAlign = Paint.Align.RIGHT
         }
-        canvas.drawText("Project H",copy.width-24f,copy.height-24f,p)
-        out=copy
+        canvas.drawText("Project H", copy.width - 24f, copy.height - 24f, p)
+        out = copy
     }
-    val mime=when(format){"PNG"->"image/png";"WEBP"->"image/webp";else->"image/jpeg"}
-    val ext=when(format){"PNG"->"png";"WEBP"->"webp";else->"jpg"}
-    val name="ProjectH_"+SimpleDateFormat("yyyyMMdd_HHmmss_SSS",Locale.US).format(Date())+"."+ext
-    val values=ContentValues().apply{
-        put(MediaStore.Images.Media.DISPLAY_NAME,name)
-        put(MediaStore.Images.Media.MIME_TYPE,mime)
-        if(android.os.Build.VERSION.SDK_INT>=29) put(MediaStore.Images.Media.RELATIVE_PATH,Environment.DIRECTORY_PICTURES+"/ProjectH")
+    val mime = when (format) {
+        "PNG" -> "image/png"
+        "WEBP" -> "image/webp"
+        else -> "image/jpeg"
     }
-    val uri=context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values)
+    val ext = when (format) {
+        "PNG" -> "png"
+        "WEBP" -> "webp"
+        else -> "jpg"
+    }
+    val name = "ProjectH_" + SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date()) + "." + ext
+    val values = ContentValues().apply {
+        put(MediaStore.Images.Media.DISPLAY_NAME, name)
+        put(MediaStore.Images.Media.MIME_TYPE, mime)
+        if (android.os.Build.VERSION.SDK_INT >= 29) put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/ProjectH")
+    }
+    val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
         ?: return "Không tạo được file"
-    context.contentResolver.openOutputStream(uri).use{os->
-        if(os==null) return "Không mở được output"
-        val compress=when(format){"PNG"->Bitmap.CompressFormat.PNG;"WEBP"->Bitmap.CompressFormat.WEBP_LOSSY;else->Bitmap.CompressFormat.JPEG}
-        out.compress(compress,quality,os)
+    context.contentResolver.openOutputStream(uri).use { os ->
+        if (os == null) return "Không mở được output"
+        val compress = when (format) {
+            "PNG" -> Bitmap.CompressFormat.PNG
+            "WEBP" -> Bitmap.CompressFormat.WEBP_LOSSY
+            else -> Bitmap.CompressFormat.JPEG
+        }
+        out.compress(compress, quality, os)
     }
     return "Đã lưu: $name"
 }
 
-private fun compositeLayers(x:Float,y:Float,w:Int,h:Int,face:DetectedFace?):Float{
-    if(face==null) return 0f
-    val b=face.bounds
+private fun portraitMask(x: Float, y: Float, w: Int, h: Int, face: DetectedFace?): Float {
+    if (face == null) return 0f
+    val b = face.bounds
     // Expanded portrait corridor: head + shoulders/chest.
-    val cx=b.centerX
-    val cy=(b.centerY+b.height*.62f).coerceAtMost(h.toFloat())
-    val rx=b.width*.95f
-    val ry=b.height*1.65f
-    val dx=(x-cx)/rx
-    val dy=(y-cy)/ry
-    return (1f-(dx*dx+dy*dy)).coerceIn(0f,1f)
+    val cx = b.centerX
+    val cy = (b.centerY + b.height * .62f).coerceAtMost(h.toFloat())
+    val rx = b.width * .95f
+    val ry = b.height * 1.65f
+    val dx = (x - cx) / rx
+    val dy = (y - cy) / ry
+    return (1f - (dx * dx + dy * dy)).coerceIn(0f, 1f)
 }
 
-private fun applyBodyWarp(src:Bitmap,e:EditState,face:DetectedFace?):Bitmap{
-    if(face==null || (abs(e.bodySlim)<.001f && abs(e.waistSlim)<.001f && abs(e.bodyHeight)<.001f)) return src
-    val w=src.width;val h=src.height
-    val sp=IntArray(w*h);src.getPixels(sp,0,w,0,0,w,h)
-    val dp=IntArray(w*h)
-    val cx=face.bounds.centerX
-    val top=face.bounds.bottom.toFloat()
-    val bodyH=(h-top).coerceAtLeast(face.bounds.height*1.2f)
-    fun sample(x:Float,y:Float):Int{
-        val ix=x.roundToInt().coerceIn(0,w-1);val iy=y.roundToInt().coerceIn(0,h-1)
-        return sp[iy*w+ix]
+private fun applyBodyWarp(src: Bitmap, e: EditState, face: DetectedFace?): Bitmap {
+    if (face == null || (abs(e.bodySlim) < .001f && abs(e.waistSlim) < .001f && abs(e.bodyHeight) < .001f)) return src
+    val w = src.width
+    val h = src.height
+    val sp = IntArray(w * h)
+    src.getPixels(sp, 0, w, 0, 0, w, h)
+    val dp = IntArray(w * h)
+    val cx = face.bounds.centerX
+    val top = face.bounds.bottom.toFloat()
+    val bodyH = (h - top).coerceAtLeast(face.bounds.height * 1.2f)
+    fun sample(x: Float, y: Float): Int {
+        val ix = x.roundToInt().coerceIn(0, w - 1)
+        val iy = y.roundToInt().coerceIn(0, h - 1)
+        return sp[iy * w + ix]
     }
-    for(y in 0 until h) for(x in 0 until w){
-        val rel=((y-top)/bodyH).coerceIn(0f,1.3f)
-        val shoulder=exp(-((rel-.18f)/.28f).pow(2))
-        val waist=exp(-((rel-.48f)/.24f).pow(2))
-        var sx=x.toFloat();var sy=y.toFloat()
-        val slim=(e.bodySlim*0.12f*shoulder + e.waistSlim*0.18f*waist)
-        sx=cx+(sx-cx)*(1f-slim)
-        sy += e.bodyHeight*.045f*bodyH*exp(-((rel-.55f)/.65f).pow(2))
-        dp[y*w+x]=sample(sx,sy)
+    for (y in 0 until h) {
+        for (x in 0 until w) {
+            val rel = ((y - top) / bodyH).coerceIn(0f, 1.3f)
+            val shoulder = exp(-((rel - .18f) / .28f).pow(2))
+            val waist = exp(-((rel - .48f) / .24f).pow(2))
+            var sx = x.toFloat()
+            var sy = y.toFloat()
+            val slim = (e.bodySlim * 0.12f * shoulder + e.waistSlim * 0.18f * waist)
+            sx = cx + (sx - cx) * (1f - slim)
+            sy += e.bodyHeight * .045f * bodyH * exp(-((rel - .55f) / .65f).pow(2))
+            dp[y * w + x] = sample(sx, sy)
+        }
     }
-    src.setPixels(dp,0,w,0,0,w,h)
+    src.setPixels(dp, 0, w, 0, 0, w, h)
     return src
 }
 
+private fun applyBackgroundAndRetouch(src: Bitmap, e: EditState, face: DetectedFace?, seg: SegmentationResult? = null): Bitmap {
+    if (e.bgBlur <= .001f && e.bgDim <= .001f && abs(e.bgWarmth) <= .001f && e.vignette <= .001f &&
+        e.eraseX < 0f && e.bgPreset == 0) return src
 
-private fun applyBackgroundAndRetouch(src:Bitmap,e:EditState,face:DetectedFace?,seg:SegmentationResult?=null):Bitmap{
-    if(e.bgBlur<=.001f && e.bgDim<=.001f && abs(e.bgWarmth)<=.001f && e.vignette<=.001f &&
-        e.eraseX<0f && e.bgPreset==0) return src
+    val w = src.width
+    val h = src.height
+    val px = IntArray(w * h)
+    src.getPixels(px, 0, w, 0, 0, w, h)
+    val radius = (1 + e.bgBlur * 6f).roundToInt()
 
-    val w=src.width; val h=src.height
-    val px=IntArray(w*h); src.getPixels(px,0,w,0,0,w,h)
-    val out=px.copyOf()
-    val radius=(1+e.bgBlur*6f).roundToInt()
-
-    fun avg(x:Int,y:Int):IntArray{
-        var rr=0;var gg=0;var bb=0;var n=0
-        for(yy=max(0,y-radius)..min(h-1,y+radius))
-            for(xx=max(0,x-radius)..min(w-1,x+radius)){
-                val q=px[yy*w+xx]
-                rr+=AndroidColor.red(q);gg+=AndroidColor.green(q);bb+=AndroidColor.blue(q);n++
+    fun avg(x: Int, y: Int): IntArray {
+        var rr = 0
+        var gg = 0
+        var bb = 0
+        var n = 0
+        for (yy in max(0, y - radius)..min(h - 1, y + radius)) {
+            for (xx in max(0, x - radius)..min(w - 1, x + radius)) {
+                val q = px[yy * w + xx]
+                rr += AndroidColor.red(q)
+                gg += AndroidColor.green(q)
+                bb += AndroidColor.blue(q)
+                n++
             }
-        return intArrayOf(rr/n,gg/n,bb/n)
+        }
+        return intArrayOf(rr / n, gg / n, bb / n)
     }
 
-    fun bgColor(x:Int,y:Int):IntArray{
-        val u=x.toFloat()/max(1,w-1); val v=y.toFloat()/max(1,h-1)
-        return when(e.bgPreset){
+    fun bgColor(x: Int, y: Int): IntArray {
+        val u = x.toFloat() / max(1, w - 1)
+        val v = y.toFloat() / max(1, h - 1)
+        return when (e.bgPreset) {
             1 -> { // studio
-                val q=(v*28).roundToInt(); intArrayOf(242-q,242-q,242-q)
+                val q = (v * 28).roundToInt()
+                intArrayOf(242 - q, 242 - q, 242 - q)
             }
             2 -> { // sunset
-                intArrayOf((245-70*v).roundToInt(),(170-50*v).roundToInt(),(110-30*v).roundToInt())
+                intArrayOf((245 - 70 * v).roundToInt(), (170 - 50 * v).roundToInt(), (110 - 30 * v).roundToInt())
             }
             3 -> { // night
-                intArrayOf((35+30*(1-v)).roundToInt(),(48+35*(1-u)).roundToInt(),(78+55*(1-v)).roundToInt())
+                intArrayOf((35 + 30 * (1 - v)).roundToInt(), (48 + 35 * (1 - u)).roundToInt(), (78 + 55 * (1 - v)).roundToInt())
             }
-            else -> intArrayOf(0,0,0)
+            else -> intArrayOf(0, 0, 0)
         }
     }
 
-    for(i in px.indices){
-        val x=i%w; val y=i/w
-        val heuristic=portraitMask(x.toFloat(),y.toFloat(),w,h,face)
-        val ai=(seg?.at(x,y) ?: heuristic).coerceIn(0f,1f)
-        val strength=e.segStrength.coerceIn(0f,1f)
-        val raw=(heuristic*(1f-strength)+ai*strength).coerceIn(0f,1f)
-        val pm=(raw*(1f-e.bgFeather*.35f)+heuristic*(e.bgFeather*.35f)).coerceIn(0f,1f)
+    for (i in px.indices) {
+        val x = i % w
+        val y = i / w
+        val heuristic = portraitMask(x.toFloat(), y.toFloat(), w, h, face)
+        val ai = (seg?.at(x, y) ?: heuristic).coerceIn(0f, 1f)
+        val strength = e.segStrength.coerceIn(0f, 1f)
+        val raw = (heuristic * (1f - strength) + ai * strength).coerceIn(0f, 1f)
+        val pm = (raw * (1f - e.bgFeather * .35f) + heuristic * (e.bgFeather * .35f)).coerceIn(0f, 1f)
 
-        var r=AndroidColor.red(px[i]).toFloat()
-        var g=AndroidColor.green(px[i]).toFloat()
-        var b=AndroidColor.blue(px[i]).toFloat()
+        var r = AndroidColor.red(px[i]).toFloat()
+        var g = AndroidColor.green(px[i]).toFloat()
+        var b = AndroidColor.blue(px[i]).toFloat()
 
-        val bg=(1f-pm)
-        if(e.bgPreset>0){
-            val c=bgColor(x,y)
-            r=r*pm+c[0]*bg; g=g*pm+c[1]*bg; b=b*pm+c[2]*bg
+        val bg = (1f - pm)
+        if (e.bgPreset > 0) {
+            val c = bgColor(x, y)
+            r = r * pm + c[0] * bg
+            g = g * pm + c[1] * bg
+            b = b * pm + c[2] * bg
         }
 
         val blurAmount=bg*e.bgBlur.coerceIn(0f,1f)
