@@ -798,7 +798,6 @@ private fun saveBitmapToGallery(context: Context, bitmap: Bitmap, format: String
 private fun portraitMask(x: Float, y: Float, w: Int, h: Int, face: DetectedFace?): Float {
     if (face == null) return 0f
     val b = face.bounds
-    // Expanded portrait corridor: head + shoulders/chest.
     val cx = b.centerX
     val cy = (b.centerY + b.height * .62f).coerceAtMost(h.toFloat())
     val rx = b.width * .95f
@@ -836,8 +835,9 @@ private fun applyBodyWarp(src: Bitmap, e: EditState, face: DetectedFace?): Bitma
             dp[y * w + x] = sample(sx, sy)
         }
     }
-    src.setPixels(dp, 0, w, 0, 0, w, h)
-    return src
+    val result = src.copy(src.config ?: Bitmap.Config.ARGB_8888, true)
+    result.setPixels(dp, 0, w, 0, 0, w, h)
+    return result
 }
 
 private fun applyBackgroundAndRetouch(src: Bitmap, e: EditState, face: DetectedFace?, seg: SegmentationResult? = null): Bitmap {
@@ -848,6 +848,7 @@ private fun applyBackgroundAndRetouch(src: Bitmap, e: EditState, face: DetectedF
     val h = src.height
     val px = IntArray(w * h)
     src.getPixels(px, 0, w, 0, 0, w, h)
+    val outPx = IntArray(w * h)
     val radius = (1 + e.bgBlur * 6f).roundToInt()
 
     fun avg(x: Int, y: Int): IntArray {
@@ -871,14 +872,14 @@ private fun applyBackgroundAndRetouch(src: Bitmap, e: EditState, face: DetectedF
         val u = x.toFloat() / max(1, w - 1)
         val v = y.toFloat() / max(1, h - 1)
         return when (e.bgPreset) {
-            1 -> { // studio
+            1 -> {
                 val q = (v * 28).roundToInt()
                 intArrayOf(242 - q, 242 - q, 242 - q)
             }
-            2 -> { // sunset
+            2 -> {
                 intArrayOf((245 - 70 * v).roundToInt(), (170 - 50 * v).roundToInt(), (110 - 30 * v).roundToInt())
             }
-            3 -> { // night
+            3 -> {
                 intArrayOf((35 + 30 * (1 - v)).roundToInt(), (48 + 35 * (1 - u)).roundToInt(), (78 + 55 * (1 - v)).roundToInt())
             }
             else -> intArrayOf(0, 0, 0)
@@ -906,60 +907,64 @@ private fun applyBackgroundAndRetouch(src: Bitmap, e: EditState, face: DetectedF
             b = b * pm + c[2] * bg
         }
 
-        val blurAmount=bg*e.bgBlur.coerceIn(0f,1f)
-        if(blurAmount>.001f){
-            val a=avg(x,y)
-            r=r*(1f-blurAmount)+a[0]*blurAmount
-            g=g*(1f-blurAmount)+a[1]*blurAmount
-            b=b*(1f-blurAmount)+a[2]*blurAmount
+        val blurAmount = bg * e.bgBlur.coerceIn(0f, 1f)
+        if (blurAmount > .001f) {
+            val a = avg(x, y)
+            r = r * (1f - blurAmount) + a[0] * blurAmount
+            g = g * (1f - blurAmount) + a[1] * blurAmount
+            b = b * (1f - blurAmount) + a[2] * blurAmount
         }
 
-        val dim=bg*e.bgDim.coerceIn(0f,1f)*.55f
-        r*=1f-dim; g*=1f-dim; b*=1f-dim
+        val dim = bg * e.bgDim.coerceIn(0f, 1f) * .55f
+        r *= 1f - dim
+        g *= 1f - dim
+        b *= 1f - dim
 
-        val warm=e.bgWarmth.coerceIn(-1f,1f)*12f*bg
-        r+=warm; b-=warm*.8f
+        val warm = e.bgWarmth.coerceIn(-1f, 1f) * 12f * bg
+        r += warm
+        b -= warm * .8f
 
-        if(e.vignette>.001f){
-            val nx=(x-w/2f)/(w/2f); val ny=(y-h/2f)/(h/2f)
-            val v=((nx*nx+ny*ny)/2f).coerceIn(0f,1f)*e.vignette*.32f
-            r*=1f-v;g*=1f-v;b*=1f-v
+        if (e.vignette > .001f) {
+            val nx = (x - w / 2f) / (w / 2f)
+            val ny = (y - h / 2f) / (h / 2f)
+            val v = ((nx * nx + ny * ny) / 2f).coerceIn(0f, 1f) * e.vignette * .32f
+            r *= 1f - v
+            g *= 1f - v
+            b *= 1f - v
         }
 
-        out[i]=AndroidColor.rgb(r.coerceIn(0f,255f).roundToInt(),
-            g.coerceIn(0f,255f).roundToInt(),b.coerceIn(0f,255f).roundToInt())
+        outPx[i] = AndroidColor.rgb(
+            r.coerceIn(0f, 255f).roundToInt(),
+            g.coerceIn(0f, 255f).roundToInt(),
+            b.coerceIn(0f, 255f).roundToInt()
+        )
     }
 
-    // V14 spot healing: feathered clone from a nearby offset patch.
-    if(e.eraseX>=0f && e.eraseY>=0f && e.eraseRadius>.001f){
-        val cx=(e.eraseX*w).roundToInt().coerceIn(0,w-1)
-        val cy=(e.eraseY*h).roundToInt().coerceIn(0,h-1)
-        val rad=(e.eraseRadius*max(w,h)).roundToInt().coerceIn(2,min(w,h)/3)
-        val ox=(rad*2).coerceAtMost(max(2,w/5))
-        for(y in max(0,cy-rad)..min(h-1,cy+rad))
-            for(x in max(0,cx-rad)..min(w-1,cx+rad)){
-                val d=hypot((x-cx).toFloat(),(y-cy).toFloat())
-                if(d<=rad){
-                    val a=((1f-d/rad).coerceIn(0f,1f)).pow(.65f)
-                    val sx=(x+ox).coerceIn(0,w-1)
-                    val sy=y
-                    val q=px[sy*w+sx]
-                    val base=out[y*w+x]
-                    out[y*w+x]=AndroidColor.rgb(
-                        (AndroidColor.red(base)*(1-a)+AndroidColor.red(q)*a).roundToInt().coerceIn(0,255),
-                        (AndroidColor.green(base)*(1-a)+AndroidColor.green(q)*a).roundToInt().coerceIn(0,255),
-                        (AndroidColor.blue(base)*(1-a)+AndroidColor.blue(q)*a).roundToInt().coerceIn(0,255)
+    if (e.eraseX >= 0f && e.eraseY >= 0f && e.eraseRadius > .001f) {
+        val cx = (e.eraseX * w).roundToInt().coerceIn(0, w - 1)
+        val cy = (e.eraseY * h).roundToInt().coerceIn(0, h - 1)
+        val rad = (e.eraseRadius * max(w, h)).roundToInt().coerceIn(2, min(w, h) / 3)
+        val ox = (rad * 2).coerceAtMost(max(2, w / 5))
+        for (y in max(0, cy - rad)..min(h - 1, cy + rad)) {
+            for (x in max(0, cx - rad)..min(w - 1, cx + rad)) {
+                val d = hypot((x - cx).toFloat(), (y - cy).toFloat())
+                if (d <= rad) {
+                    val a = ((1f - d / rad).coerceIn(0f, 1f)).pow(.65f)
+                    val sx = (x + ox).coerceIn(0, w - 1)
+                    val sy = y
+                    val q = px[sy * w + sx]
+                    val base = outPx[y * w + x]
+                    outPx[y * w + x] = AndroidColor.rgb(
+                        (AndroidColor.red(base) * (1 - a) + AndroidColor.red(q) * a).roundToInt().coerceIn(0, 255),
+                        (AndroidColor.green(base) * (1 - a) + AndroidColor.green(q) * a).roundToInt().coerceIn(0, 255),
+                        (AndroidColor.blue(base) * (1 - a) + AndroidColor.blue(q) * a).roundToInt().coerceIn(0, 255)
                     )
                 }
             }
+        }
     }
 
-    src.setPixels(out,0,w,0,0,w,h)
-    if(e.eraseX>=0f && e.eraseY>=0f && e.eraseRadius>.001f){
-        val cx=(e.eraseX*w).roundToInt().coerceIn(0,w-1)
-        val cy=(e.eraseY*h).roundToInt().coerceIn(0,h-1)
-        val rad=(e.eraseRadius*max(w,h)).roundToInt().coerceIn(2,min(w,h)/3)
-        return SmartEraserEngine.heal(src,cx,cy,rad,.65f)
-    }
-    return src
+    val result = src.copy(src.config ?: Bitmap.Config.ARGB_8888, true)
+    result.setPixels(outPx, 0, w, 0, 0, w, h)
+    return result
 }
